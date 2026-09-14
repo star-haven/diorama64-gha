@@ -1,9 +1,9 @@
 name: Release build
 
-# Fired by studio's release workflow on Tangled, since Spindle has no macOS
+# Fired by diorama64's release workflow on Tangled, since Spindle has no macOS
 # runner (and Windows builds are unsigned, so it's simpler to build those here
 # too rather than fight Wine cross-compilation on Spindle). This repo carries
-# no source of its own - it just clones studio at the tag it's told to build,
+# no source of its own - it just clones diorama64 at the tag it's told to build,
 # packages it, and uploads the result to the same bucket the Linux release
 # already lives in.
 #
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Branch or tag of studio to build"
+        description: "Branch or tag of diorama64 to build"
         default: main
       dry_run:
         description: "Skip uploading to object storage"
@@ -31,14 +31,14 @@ jobs:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
     steps:
-      - name: Check out studio at the release tag
-        run: git clone --branch "$TAG" --depth 1 https://knot.starhaven.dev/did:plc:pth3dl3uhjhrdzj7su65ywg6 studio
+      - name: Check out diorama64 at the release tag
+        run: git clone --branch "$TAG" --depth 1 https://knot.starhaven.dev/did:plc:pth3dl3uhjhrdzj7su65ywg6 diorama64
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: yarn
-          cache-dependency-path: studio/yarn.lock
+          cache-dependency-path: diorama64/yarn.lock
 
       - uses: actions/setup-python@v5
         with:
@@ -52,12 +52,12 @@ jobs:
             ~/Library/Caches/electron
             ~/Library/Caches/electron-builder
             ~/Library/Caches/node-gyp
-          key: ${{ runner.os }}-electron-${{ hashFiles('studio/yarn.lock') }}
+          key: ${{ runner.os }}-electron-${{ hashFiles('diorama64/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-electron-
 
       - name: Install dependencies
-        working-directory: studio
+        working-directory: diorama64
         env:
           # @vscode/ripgrep downloads a release asset from GitHub; unauthenticated
           # requests from Actions' shared IPs get rate-limited into a 403.
@@ -65,11 +65,11 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build
-        working-directory: studio
+        working-directory: diorama64
         run: yarn build
 
       - name: Package, notarize, and publish
-        working-directory: studio
+        working-directory: diorama64
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -98,20 +98,20 @@ jobs:
           set -euo pipefail
 
           # Each version produces 2 files (dmg + zip), both named
-          # StarHavenStudio-<version>.<ext>. Keep the newest 3 versions,
+          # Diorama64-<version>.<ext>. Keep the newest 3 versions,
           # delete every file belonging to any older one.
           keep=3
           endpoint="https://fsn1.your-objectstorage.com"
 
           versions=$(aws s3api list-objects-v2 \
             --bucket starhaven \
-            --prefix studio/releases/ \
+            --prefix diorama64/releases/ \
             --endpoint-url "$endpoint" \
             --query 'Contents[].Key' \
             --output text \
             | tr '\t' '\n' \
             | grep -E '\.(dmg|zip)$' \
-            | sed -E 's#.*StarHavenStudio-(.+)\.(dmg|zip)$#\1#' \
+            | sed -E 's#.*Diorama64-(.+)\.(dmg|zip)$#\1#' \
             | sort -uV)
 
           stale=$(echo "$versions" | head -n "-$keep" || true)
@@ -123,8 +123,8 @@ jobs:
 
           while read -r version; do
             echo "Pruning $version"
-            aws s3 rm "s3://starhaven/studio/releases/" --endpoint-url "$endpoint" \
-              --recursive --exclude "*" --include "StarHavenStudio-${version}-*"
+            aws s3 rm "s3://starhaven/diorama64/releases/" --endpoint-url "$endpoint" \
+              --recursive --exclude "*" --include "Diorama64-${version}-*"
           done <<<"$stale"
 
   windows:
@@ -134,14 +134,14 @@ jobs:
       DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
     steps:
-      - name: Check out studio at the release tag
-        run: git clone --branch "$env:TAG" --depth 1 https://knot.starhaven.dev/did:plc:pth3dl3uhjhrdzj7su65ywg6 studio
+      - name: Check out diorama64 at the release tag
+        run: git clone --branch "$env:TAG" --depth 1 https://knot.starhaven.dev/did:plc:pth3dl3uhjhrdzj7su65ywg6 diorama64
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: yarn
-          cache-dependency-path: studio/yarn.lock
+          cache-dependency-path: diorama64/yarn.lock
 
       - uses: actions/setup-python@v5
         with:
@@ -156,12 +156,12 @@ jobs:
             ${{ env.LOCALAPPDATA }}\electron\Cache
             ${{ env.LOCALAPPDATA }}\electron-builder\Cache
             ${{ env.LOCALAPPDATA }}\node-gyp\Cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('studio/yarn.lock') }}
+          key: ${{ runner.os }}-electron-${{ hashFiles('diorama64/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-electron-
 
       - name: Install dependencies
-        working-directory: studio
+        working-directory: diorama64
         env:
           # @vscode/ripgrep downloads a release asset from GitHub; unauthenticated
           # requests from Actions' shared IPs get rate-limited into a 403.
@@ -169,11 +169,11 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build
-        working-directory: studio
+        working-directory: diorama64
         run: yarn build
 
       - name: Package and publish
-        working-directory: studio
+        working-directory: diorama64
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -195,20 +195,20 @@ jobs:
           set -euo pipefail
 
           # Each version produces 2 files (x64 + arm64), both named
-          # StarHavenStudio-<version>-<arch>-Setup.exe. Keep the newest 3
+          # Diorama64-<version>-<arch>-Setup.exe. Keep the newest 3
           # versions, delete every file belonging to any older one.
           keep=3
           endpoint="https://fsn1.your-objectstorage.com"
 
           versions=$(aws s3api list-objects-v2 \
             --bucket starhaven \
-            --prefix studio/releases/ \
+            --prefix diorama64/releases/ \
             --endpoint-url "$endpoint" \
             --query 'Contents[].Key' \
             --output text \
             | tr '\t' '\n' \
             | grep -E '\-Setup\.exe$' \
-            | sed -E 's#.*StarHavenStudio-(.+)-(x64|arm64)-Setup\.exe$#\1#' \
+            | sed -E 's#.*Diorama64-(.+)-(x64|arm64)-Setup\.exe$#\1#' \
             | sort -uV)
 
           stale=$(echo "$versions" | head -n "-$keep" || true)
@@ -220,6 +220,6 @@ jobs:
 
           while read -r version; do
             echo "Pruning $version"
-            aws s3 rm "s3://starhaven/studio/releases/" --endpoint-url "$endpoint" \
-              --recursive --exclude "*" --include "StarHavenStudio-${version}-*"
+            aws s3 rm "s3://starhaven/diorama64/releases/" --endpoint-url "$endpoint" \
+              --recursive --exclude "*" --include "Diorama64-${version}-*"
           done <<<"$stale"
