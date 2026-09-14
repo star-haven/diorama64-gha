@@ -98,8 +98,8 @@ jobs:
           set -euo pipefail
 
           # Each version produces 2 files (dmg + zip), both named
-          # StarHavenStudio-<version>-universal.<ext>. Keep the newest 3
-          # versions, delete every file belonging to any older one.
+          # StarHavenStudio-<version>.<ext>. Keep the newest 3 versions,
+          # delete every file belonging to any older one.
           keep=3
           endpoint="https://fsn1.your-objectstorage.com"
 
@@ -111,7 +111,7 @@ jobs:
             --output text \
             | tr '\t' '\n' \
             | grep -E '\.(dmg|zip)$' \
-            | sed -E 's#.*StarHavenStudio-(.+)-universal\.(dmg|zip)$#\1#' \
+            | sed -E 's#.*StarHavenStudio-(.+)\.(dmg|zip)$#\1#' \
             | sort -uV)
 
           stale=$(echo "$versions" | head -n "-$keep" || true)
