@@ -45,6 +45,10 @@ jobs:
 
       - name: Install dependencies
         working-directory: studio
+        env:
+          # @vscode/ripgrep downloads a release asset from GitHub; unauthenticated
+          # requests from Actions' shared IPs get rate-limited into a 403.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: yarn install --frozen-lockfile
 
       - name: Build
@@ -135,8 +139,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: ilammy/msvc-dev-cmd@v1
+
       - name: Install dependencies
         working-directory: studio
+        env:
+          # @vscode/ripgrep downloads a release asset from GitHub; unauthenticated
+          # requests from Actions' shared IPs get rate-limited into a 403.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: yarn install --frozen-lockfile
 
       - name: Build
