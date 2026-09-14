@@ -97,9 +97,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Each version produces 4 files (dmg + zip, x64 + arm64), all named
-          # StarHavenStudio-<version>-<arch>.<ext>. Keep the newest 3 versions,
-          # delete every file belonging to any older one.
+          # Each version produces 2 files (dmg + zip), both named
+          # StarHavenStudio-<version>-universal.<ext>. Keep the newest 3
+          # versions, delete every file belonging to any older one.
           keep=3
           endpoint="https://fsn1.your-objectstorage.com"
 
@@ -111,7 +111,7 @@ jobs:
             --output text \
             | tr '\t' '\n' \
             | grep -E '\.(dmg|zip)$' \
-            | sed -E 's#.*StarHavenStudio-(.+)-(x64|arm64)\.(dmg|zip)$#\1#' \
+            | sed -E 's#.*StarHavenStudio-(.+)-universal\.(dmg|zip)$#\1#' \
             | sort -uV)
 
           stale=$(echo "$versions" | head -n "-$keep" || true)
@@ -194,29 +194,32 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Each version produces one StarHavenStudio-<version>-Setup.exe.
-          # Keep the newest 3, delete the rest.
+          # Each version produces 2 files (x64 + arm64), both named
+          # StarHavenStudio-<version>-<arch>-Setup.exe. Keep the newest 3
+          # versions, delete every file belonging to any older one.
           keep=3
           endpoint="https://fsn1.your-objectstorage.com"
 
-          stale=$(aws s3api list-objects-v2 \
+          versions=$(aws s3api list-objects-v2 \
             --bucket starhaven \
             --prefix studio/releases/ \
             --endpoint-url "$endpoint" \
-            --query 'Contents[].[LastModified,Key]' \
+            --query 'Contents[].Key' \
             --output text \
+            | tr '\t' '\n' \
             | grep -E '\-Setup\.exe$' \
-            | sort -r \
-            | tail -n "+$((keep + 1))" \
-            | awk '{print $2}' || true)
+            | sed -E 's#.*StarHavenStudio-(.+)-(x64|arm64)-Setup\.exe$#\1#' \
+            | sort -uV)
+
+          stale=$(echo "$versions" | head -n "-$keep" || true)
 
           if [ -z "$stale" ]; then
             echo "Nothing to prune."
             exit 0
           fi
 
-          while read -r key; do
-            echo "Pruning $key"
-            aws s3 rm "s3://starhaven/$key" --endpoint-url "$endpoint"
-            aws s3 rm "s3://starhaven/$key.blockmap" --endpoint-url "$endpoint" || true
+          while read -r version; do
+            echo "Pruning $version"
+            aws s3 rm "s3://starhaven/studio/releases/" --endpoint-url "$endpoint" \
+              --recursive --exclude "*" --include "StarHavenStudio-${version}-*"
           done <<<"$stale"
