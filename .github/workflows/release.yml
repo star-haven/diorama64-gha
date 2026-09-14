@@ -37,11 +37,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: yarn
+          cache-dependency-path: studio/yarn.lock
 
       - uses: actions/setup-python@v5
         with:
           # node-gyp needs distutils, which newer Pythons dropped.
           python-version: "3.11"
+
+      - name: Cache Electron and node-gyp
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/Library/Caches/node-gyp
+          key: ${{ runner.os }}-electron-${{ hashFiles('studio/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
 
       - name: Install dependencies
         working-directory: studio
@@ -65,7 +78,12 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         # --publish never: the upload below is ours. electron-builder still writes
         # latest-mac.yml and bakes app-update.yml into the app.
-        run: yarn --cwd app package:mac --publish never
+        # A GitHub secret that isn't set comes through as an empty string, not an
+        # unset var - electron-builder treats a non-empty (if empty-valued)
+        # CSC_LINK as a real cert path and fails, so drop it entirely when blank.
+        run: |
+          if [ -z "$CSC_LINK" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
+          yarn --cwd app package:mac --publish never
 
       - name: Upload to object storage
         if: env.DRY_RUN != 'true'
@@ -134,12 +152,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: yarn
+          cache-dependency-path: studio/yarn.lock
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache Electron and node-gyp
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.LOCALAPPDATA }}\electron\Cache
+            ${{ env.LOCALAPPDATA }}\electron-builder\Cache
+            ${{ env.LOCALAPPDATA }}\node-gyp\Cache
+          key: ${{ runner.os }}-electron-${{ hashFiles('studio/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
 
       - name: Install dependencies
         working-directory: studio
