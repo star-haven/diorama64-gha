@@ -1,0 +1,102 @@
+name: Release macOS build
+
+# Fired by studio's release workflow on Tangled, since Spindle has no macOS
+# runner. This repo carries no source of its own - it just clones studio at
+# the tag it's told to build, packages it for mac, and uploads the result to
+# the same bucket the Linux release already lives in.
+on:
+  repository_dispatch:
+    types: [release]
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Check out studio at the release tag
+        env:
+          TAG: ${{ github.event.client_payload.tag }}
+        run: git clone --branch "$TAG" --depth 1 https://knot.starhaven.dev/starhaven.dev/studio.git studio
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          # node-gyp needs distutils, which newer Pythons dropped.
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: studio
+        run: |
+          npm config set python "$(python3 -c 'import sys; print(sys.executable)')"
+          yarn install --frozen-lockfile
+
+      - name: Build
+        working-directory: studio
+        run: yarn build
+
+      - name: Package and notarize
+        working-directory: studio
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        # --publish never: the upload below is ours. electron-builder still writes
+        # latest-mac.yml and bakes app-update.yml into the app.
+        run: yarn --cwd app package:mac --publish never
+
+      - name: Upload to object storage
+        working-directory: studio
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws s3 sync app/dist s3://starhaven/studio/releases \
+            --endpoint-url https://fsn1.your-objectstorage.com \
+            --acl public-read \
+            --exclude "*" \
+            --include "*.dmg" \
+            --include "*.zip" \
+            --include "*.blockmap" \
+            --include "latest-mac.yml"
+
+      - name: Prune old releases
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Each version produces 4 files (dmg + zip, x64 + arm64), all named
+          # StarHavenStudio-<version>-<arch>.<ext>. Keep the newest 3 versions,
+          # delete every file belonging to any older one.
+          keep=3
+          endpoint="https://fsn1.your-objectstorage.com"
+
+          versions=$(aws s3api list-objects-v2 \
+            --bucket starhaven \
+            --prefix studio/releases/ \
+            --endpoint-url "$endpoint" \
+            --query 'Contents[].Key' \
+            --output text \
+            | tr '\t' '\n' \
+            | grep -E '\.(dmg|zip)$' \
+            | sed -E 's#.*StarHavenStudio-(.+)-(x64|arm64)\.(dmg|zip)$#\1#' \
+            | sort -uV)
+
+          stale=$(echo "$versions" | head -n "-$keep" || true)
+
+          if [ -z "$stale" ]; then
+            echo "Nothing to prune."
+            exit 0
+          fi
+
+          while read -r version; do
+            echo "Pruning $version"
+            aws s3 rm "s3://starhaven/studio/releases/" --endpoint-url "$endpoint" \
+              --recursive --exclude "*" --include "StarHavenStudio-${version}-*"
+          done <<<"$stale"
