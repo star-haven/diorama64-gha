@@ -68,7 +68,7 @@ jobs:
         working-directory: studio
         run: yarn build
 
-      - name: Package and notarize
+      - name: Package, notarize, and publish
         working-directory: studio
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -76,30 +76,18 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        # --publish never: the upload below is ours. electron-builder still writes
-        # latest-mac.yml and bakes app-update.yml into the app.
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        # electron-builder.yml's publish config uploads directly and writes
+        # latest-mac.yml + app-update.yml.
         # A GitHub secret that isn't set comes through as an empty string, not an
         # unset var - electron-builder treats a non-empty (if empty-valued)
         # CSC_LINK as a real cert path and fails, so drop it entirely when blank.
         run: |
           if [ -z "$CSC_LINK" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
-          yarn --cwd app package:mac --publish never
-
-      - name: Upload to object storage
-        if: env.DRY_RUN != 'true'
-        working-directory: studio
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          aws s3 sync app/dist s3://starhaven/studio/releases \
-            --endpoint-url https://fsn1.your-objectstorage.com \
-            --acl public-read \
-            --exclude "*" \
-            --include "*.dmg" \
-            --include "*.zip" \
-            --include "*.blockmap" \
-            --include "latest-mac.yml"
+          publish=always
+          if [ "$DRY_RUN" = "true" ]; then publish=never; fi
+          yarn --cwd app package:mac --publish "$publish"
 
       - name: Prune old releases
         if: env.DRY_RUN != 'true'
@@ -184,26 +172,18 @@ jobs:
         working-directory: studio
         run: yarn build
 
-      - name: Package
-        working-directory: studio
-        # Unsigned: no CSC_LINK. electron-builder still writes latest.yml and
-        # bakes app-update.yml into the app.
-        run: yarn --cwd app package:win --publish never
-
-      - name: Upload to object storage
-        if: env.DRY_RUN != 'true'
+      - name: Package and publish
         working-directory: studio
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        # Unsigned: no CSC_LINK. electron-builder.yml's publish config uploads
+        # directly and writes latest.yml + app-update.yml.
+        shell: bash
         run: |
-          aws s3 sync app/dist s3://starhaven/studio/releases `
-            --endpoint-url https://fsn1.your-objectstorage.com `
-            --acl public-read `
-            --exclude "*" `
-            --include "*-Setup.exe" `
-            --include "*.blockmap" `
-            --include "latest.yml"
+          publish=always
+          if [ "$DRY_RUN" = "true" ]; then publish=never; fi
+          yarn --cwd app package:win --publish "$publish"
 
       - name: Prune old releases
         if: env.DRY_RUN != 'true'
