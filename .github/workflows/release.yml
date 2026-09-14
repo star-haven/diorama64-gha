@@ -1,21 +1,37 @@
-name: Release macOS build
+name: Release build
 
 # Fired by studio's release workflow on Tangled, since Spindle has no macOS
-# runner. This repo carries no source of its own - it just clones studio at
-# the tag it's told to build, packages it for mac, and uploads the result to
-# the same bucket the Linux release already lives in.
+# runner (and Windows builds are unsigned, so it's simpler to build those here
+# too rather than fight Wine cross-compilation on Spindle). This repo carries
+# no source of its own - it just clones studio at the tag it's told to build,
+# packages it, and uploads the result to the same bucket the Linux release
+# already lives in.
+#
+# workflow_dispatch is for manually re-running a build (e.g. to debug a
+# failure) without needing a real release tag. dry_run skips the upload/prune
+# steps so a manual run can't clobber the production update feed.
 on:
   repository_dispatch:
     types: [release]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Branch or tag of studio to build"
+        default: main
+      dry_run:
+        description: "Skip uploading to object storage"
+        type: boolean
+        default: true
 
 jobs:
-  build:
+  mac:
     runs-on: macos-14
+    env:
+      TAG: ${{ github.event.client_payload.tag || inputs.tag }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
     steps:
       - name: Check out studio at the release tag
-        env:
-          TAG: ${{ github.event.client_payload.tag }}
         run: git clone --branch "$TAG" --depth 1 https://knot.starhaven.dev/starhaven.dev/studio.git studio
 
       - uses: actions/setup-node@v4
@@ -29,9 +45,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: studio
-        run: |
-          npm config set python "$(python3 -c 'import sys; print(sys.executable)')"
-          yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile
 
       - name: Build
         working-directory: studio
@@ -50,6 +64,7 @@ jobs:
         run: yarn --cwd app package:mac --publish never
 
       - name: Upload to object storage
+        if: env.DRY_RUN != 'true'
         working-directory: studio
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -65,6 +80,7 @@ jobs:
             --include "latest-mac.yml"
 
       - name: Prune old releases
+        if: env.DRY_RUN != 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -99,4 +115,87 @@ jobs:
             echo "Pruning $version"
             aws s3 rm "s3://starhaven/studio/releases/" --endpoint-url "$endpoint" \
               --recursive --exclude "*" --include "StarHavenStudio-${version}-*"
+          done <<<"$stale"
+
+  windows:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ github.event.client_payload.tag || inputs.tag }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+
+    steps:
+      - name: Check out studio at the release tag
+        run: git clone --branch "$env:TAG" --depth 1 https://knot.starhaven.dev/starhaven.dev/studio.git studio
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: studio
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        working-directory: studio
+        run: yarn build
+
+      - name: Package
+        working-directory: studio
+        # Unsigned: no CSC_LINK. electron-builder still writes latest.yml and
+        # bakes app-update.yml into the app.
+        run: yarn --cwd app package:win --publish never
+
+      - name: Upload to object storage
+        if: env.DRY_RUN != 'true'
+        working-directory: studio
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws s3 sync app/dist s3://starhaven/studio/releases `
+            --endpoint-url https://fsn1.your-objectstorage.com `
+            --acl public-read `
+            --exclude "*" `
+            --include "*-Setup.exe" `
+            --include "*.blockmap" `
+            --include "latest.yml"
+
+      - name: Prune old releases
+        if: env.DRY_RUN != 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Each version produces one StarHavenStudio-<version>-Setup.exe.
+          # Keep the newest 3, delete the rest.
+          keep=3
+          endpoint="https://fsn1.your-objectstorage.com"
+
+          stale=$(aws s3api list-objects-v2 \
+            --bucket starhaven \
+            --prefix studio/releases/ \
+            --endpoint-url "$endpoint" \
+            --query 'Contents[].[LastModified,Key]' \
+            --output text \
+            | grep -E '\-Setup\.exe$' \
+            | sort -r \
+            | tail -n "+$((keep + 1))" \
+            | awk '{print $2}' || true)
+
+          if [ -z "$stale" ]; then
+            echo "Nothing to prune."
+            exit 0
+          fi
+
+          while read -r key; do
+            echo "Pruning $key"
+            aws s3 rm "s3://starhaven/$key" --endpoint-url "$endpoint"
+            aws s3 rm "s3://starhaven/$key.blockmap" --endpoint-url "$endpoint" || true
           done <<<"$stale"
