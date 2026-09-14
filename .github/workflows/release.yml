@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Check out studio at the release tag
-        run: git clone --branch "$TAG" --depth 1 https://knot.starhaven.dev/starhaven.dev/studio studio
+        run: git clone --branch "$TAG" --depth 1 https://knot.starhaven.dev/did:plc:pth3dl3uhjhrdzj7su65ywg6 studio
 
       - uses: actions/setup-node@v4
         with:
@@ -125,7 +125,7 @@ jobs:
 
     steps:
       - name: Check out studio at the release tag
-        run: git clone --branch "$env:TAG" --depth 1 https://knot.starhaven.dev/starhaven.dev/studio studio
+        run: git clone --branch "$env:TAG" --depth 1 https://knot.starhaven.dev/did:plc:pth3dl3uhjhrdzj7su65ywg6 studio
 
       - uses: actions/setup-node@v4
         with:
