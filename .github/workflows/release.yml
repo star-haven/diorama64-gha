@@ -160,12 +160,13 @@ jobs:
 
       # ares's own CI validates the "windows-ci-mingw-native" preset with
       # MSYS2 clang64, not raw MSVC, so building the patched fork from source
-      # uses that same toolchain. path-type: inherit puts it on PATH for every
-      # later step, including the plain bash "Package and publish" step below.
+      # uses that same toolchain. path-type stays "minimal" (the default) so
+      # MSYS2's own `tar` doesn't shadow Windows' native one on PATH for every
+      # other step - download-ares.mjs reaches into C:\msys64\clang64\bin
+      # itself for just the commands that need it (see MSYS2_CLANG64_BIN).
       - uses: msys2/setup-msys2@v2
         with:
           msystem: CLANG64
-          path-type: inherit
           install: >-
             mingw-w64-clang-x86_64-cmake
             mingw-w64-clang-x86_64-ninja
