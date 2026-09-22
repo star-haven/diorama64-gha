@@ -1,0 +1,112 @@
+name: Release papermario-dx
+
+# Fired by papermario-dx's release workflow on Tangled, which only builds
+# the aarch64-linux unix-toolchain itself (the one thing native to its own
+# host, kuribo). This repo carries no source of its own - it just clones
+# papermario-dx at the tag it's told to build, builds the pieces that need
+# real x86_64/macOS hardware (Windows toolchain, clangd index, x86_64-linux
+# toolchain, aarch64-darwin toolchain), and uploads the results to the same
+# bucket the aarch64-linux release already lives in.
+#
+# Cloning from the Tangled knot (rather than GitHub) means nothing here
+# needs to change if papermario-dx's canonical host ever moves.
+#
+# workflow_dispatch is for manually re-running a build (e.g. to debug a
+# failure) without needing a real release tag.
+on:
+  repository_dispatch:
+    types: [papermario-dx-release]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of papermario-dx to build"
+        required: true
+
+env:
+  TAG: ${{ github.event.client_payload.tag || inputs.tag }}
+  REPO_URL: https://knot.starhaven.dev/did:plc:dfsxnyhzxwqpmykryrjtjabz
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out papermario-dx at the release tag
+        run: git clone --branch "$TAG" --depth 1 "$REPO_URL" papermario-dx
+
+      - uses: cachix/install-nix-action@v25
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - uses: cachix/cachix-action@v15
+        with:
+          name: papermario-dx
+          authToken: "${{ secrets.PAPERMARIO_DX_CACHIX_AUTH_TOKEN }}"
+
+      - name: Download base ROM
+        working-directory: papermario-dx
+        run: |
+          curl -L "$BASEROM_US_URL" -o papermario.us.z64
+          nix-store --add-fixed sha256 papermario.us.z64
+        env:
+          BASEROM_US_URL: ${{ secrets.PAPERMARIO_DX_BASEROM_US_URL }}
+
+      - name: Build Windows toolchain
+        working-directory: papermario-dx
+        run: nix build .#windows-toolchain --out-link result-windows-toolchain
+
+      - name: Build clangd index
+        working-directory: papermario-dx
+        run: nix build .#clangd-index --out-link result-clangd-index
+
+      - name: Build x86_64-linux toolchain
+        working-directory: papermario-dx
+        run: nix build .#unix-toolchain --out-link result-toolchain-x86_64-linux
+
+      - name: Upload to S3
+        working-directory: papermario-dx
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          endpoint="https://fsn1.your-objectstorage.com"
+          dest="s3://starhaven/papermario-dx/releases/$TAG"
+          aws s3 cp result-windows-toolchain/papermario-dx-windows.zip "$dest/" --endpoint-url "$endpoint"
+          aws s3 cp result-clangd-index/papermario-dx.idx "$dest/" --endpoint-url "$endpoint"
+          aws s3 cp result-toolchain-x86_64-linux/papermario-dx-*.zip "$dest/" --endpoint-url "$endpoint"
+
+  mac:
+    runs-on: macos-15
+    steps:
+      - name: Check out papermario-dx at the release tag
+        run: git clone --branch "$TAG" --depth 1 "$REPO_URL" papermario-dx
+
+      - uses: cachix/install-nix-action@v25
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - uses: cachix/cachix-action@v15
+        with:
+          name: papermario-dx-aarch64-darwin
+          authToken: "${{ secrets.PAPERMARIO_DX_AARCH64_DARWIN_CACHIX_AUTH_TOKEN }}"
+
+      - name: Download base ROM
+        working-directory: papermario-dx
+        run: |
+          curl -L "$BASEROM_US_URL" -o papermario.us.z64
+          nix-store --add-fixed sha256 papermario.us.z64
+        env:
+          BASEROM_US_URL: ${{ secrets.PAPERMARIO_DX_BASEROM_US_URL }}
+
+      - name: Build aarch64-darwin toolchain
+        working-directory: papermario-dx
+        run: nix build .#unix-toolchain --out-link result-toolchain-aarch64-darwin
+
+      - name: Upload to S3
+        working-directory: papermario-dx
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          endpoint="https://fsn1.your-objectstorage.com"
+          dest="s3://starhaven/papermario-dx/releases/$TAG"
+          aws s3 cp result-toolchain-aarch64-darwin/papermario-dx-*.zip "$dest/" --endpoint-url "$endpoint"
