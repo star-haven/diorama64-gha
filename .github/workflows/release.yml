@@ -167,6 +167,10 @@ jobs:
       - uses: msys2/setup-msys2@v2
         with:
           msystem: CLANG64
+          # Pin the install root: it's a self-extracting installer run from
+          # wherever the runner's tool cache happens to put it otherwise, so
+          # "C:\msys64" isn't reliably where it lands without this.
+          location: C:\
           install: >-
             mingw-w64-clang-x86_64-cmake
             mingw-w64-clang-x86_64-ninja
