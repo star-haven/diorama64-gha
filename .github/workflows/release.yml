@@ -68,6 +68,15 @@ jobs:
         working-directory: diorama64
         run: yarn build
 
+      - name: Install cmake and ninja for building ares from source
+        run: brew install cmake ninja
+
+      - name: Cache patched ares build
+        uses: actions/cache@v4
+        with:
+          path: diorama64/app/resources/ares
+          key: ${{ runner.os }}-ares-${{ hashFiles('diorama64/nix/ares/*.patch') }}-${{ hashFiles('diorama64/app/scripts/download-ares.mjs') }}
+
       - name: Package, notarize, and publish
         working-directory: diorama64
         env:
@@ -149,6 +158,20 @@ jobs:
 
       - uses: ilammy/msvc-dev-cmd@v1
 
+      # ares's own CI validates the "windows-ci-mingw-native" preset with
+      # MSYS2 clang64, not raw MSVC, so building the patched fork from source
+      # uses that same toolchain. path-type: inherit puts it on PATH for every
+      # later step, including the plain bash "Package and publish" step below.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          path-type: inherit
+          install: >-
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-clang
+            patch
+
       - name: Cache Electron and node-gyp
         uses: actions/cache@v4
         with:
@@ -159,6 +182,12 @@ jobs:
           key: ${{ runner.os }}-electron-${{ hashFiles('diorama64/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-electron-
+
+      - name: Cache patched ares build
+        uses: actions/cache@v4
+        with:
+          path: diorama64/app/resources/ares
+          key: ${{ runner.os }}-ares-${{ hashFiles('diorama64/nix/ares/*.patch') }}-${{ hashFiles('diorama64/app/scripts/download-ares.mjs') }}
 
       - name: Install dependencies
         working-directory: diorama64
