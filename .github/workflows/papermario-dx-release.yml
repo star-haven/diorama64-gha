@@ -1,25 +1,10 @@
 name: Build papermario-dx toolchains
 
-# Fired by papermario-dx's Tangled pipeline on every push to main, which only
-# builds the aarch64-linux unix-toolchain itself (the one thing native to its
-# own host, kuribo). This repo carries no source of its own - it just clones
-# papermario-dx at the given commit, builds the pieces that need real
-# x86_64/macOS hardware (Windows toolchain, clangd index, x86_64-linux
-# toolchain, aarch64-darwin toolchain), and publishes them to the same
-# content-addressed S3 bucket the aarch64-linux build already lives in.
-#
-# Toolchains are stored by the sha256 of their zip, not by commit or tag, and
-# deduplicated: a commit whose toolchain-relevant inputs didn't change reuses
-# the existing blob. Each commit gets a small manifest object (one per
-# platform) pointing at that hash, which is what
-# tools/unix/download_toolchain.sh and tools/windows/download_toolchain.bat
-# actually resolve against.
-#
-# Cloning from the Tangled knot (rather than GitHub) means nothing here
-# needs to change if papermario-dx's canonical host ever moves.
-#
-# workflow_dispatch is for manually re-running a build (e.g. to debug a
-# failure) without needing a real push.
+# Fired by papermario-dx's Tangled pipeline on every push to main, since
+# Spindle can't build the Windows/x86_64/macOS pieces itself. This repo
+# carries no source of its own - it just clones papermario-dx at the given
+# commit and builds those. workflow_dispatch is for manually re-running a
+# build without needing a real push.
 on:
   repository_dispatch:
     types: [papermario-dx-release]
