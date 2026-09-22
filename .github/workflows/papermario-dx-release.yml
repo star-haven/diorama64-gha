@@ -83,9 +83,7 @@ jobs:
       - name: Check out papermario-dx at the release tag
         run: git clone --branch "$TAG" --depth 1 "$REPO_URL" papermario-dx
 
-      - uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
+      - uses: DeterminateSystems/nix-installer-action@v23
       - uses: cachix/cachix-action@v15
         with:
           name: papermario-dx-aarch64-darwin
