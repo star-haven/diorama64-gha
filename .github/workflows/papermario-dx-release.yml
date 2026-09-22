@@ -41,17 +41,20 @@ jobs:
           name: papermario-dx
           authToken: "${{ secrets.PAPERMARIO_DX_CACHIX_AUTH_TOKEN }}"
 
+      - name: Build Windows toolchain
+        working-directory: papermario-dx
+        run: nix build .#windows-toolchain --out-link result-windows-toolchain
+
       - name: Download base ROM
+        # Only clangd-index needs this - it runs a real build to generate
+        # compile_commands.json for indexing. windows-toolchain and
+        # unix-toolchain just package the compiler/tools themselves.
         working-directory: papermario-dx
         run: |
           curl -L "$BASEROM_US_URL" -o papermario.us.z64
           nix-store --add-fixed sha256 papermario.us.z64
         env:
           BASEROM_US_URL: ${{ secrets.PAPERMARIO_DX_BASEROM_US_URL }}
-
-      - name: Build Windows toolchain
-        working-directory: papermario-dx
-        run: nix build .#windows-toolchain --out-link result-windows-toolchain
 
       - name: Build clangd index
         working-directory: papermario-dx
@@ -87,14 +90,6 @@ jobs:
         with:
           name: papermario-dx-aarch64-darwin
           authToken: "${{ secrets.PAPERMARIO_DX_AARCH64_DARWIN_CACHIX_AUTH_TOKEN }}"
-
-      - name: Download base ROM
-        working-directory: papermario-dx
-        run: |
-          curl -L "$BASEROM_US_URL" -o papermario.us.z64
-          nix-store --add-fixed sha256 papermario.us.z64
-        env:
-          BASEROM_US_URL: ${{ secrets.PAPERMARIO_DX_BASEROM_US_URL }}
 
       - name: Build aarch64-darwin toolchain
         working-directory: papermario-dx
