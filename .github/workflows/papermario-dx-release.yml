@@ -40,7 +40,7 @@ jobs:
     steps:
       - name: Check out papermario-dx at the given commit
         run: |
-          git clone --branch dx-scratch-test-1 --single-branch --depth 100 "$REPO_URL" papermario-dx
+          git clone --branch main --single-branch --depth 100 "$REPO_URL" papermario-dx
           git -C papermario-dx checkout "$SHA"
 
       - uses: cachix/install-nix-action@v25
@@ -99,7 +99,7 @@ jobs:
     steps:
       - name: Check out papermario-dx at the given commit
         run: |
-          git clone --branch dx-scratch-test-1 --single-branch --depth 100 "$REPO_URL" papermario-dx
+          git clone --branch main --single-branch --depth 100 "$REPO_URL" papermario-dx
           git -C papermario-dx checkout "$SHA"
 
       - uses: DeterminateSystems/nix-installer-action@v23
