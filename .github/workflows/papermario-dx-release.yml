@@ -80,7 +80,15 @@ jobs:
           publish result-toolchain-x86_64-linux/papermario-dx-linux-x86_64.zip linux-x86_64 zip
 
   mac:
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            platform: macos-aarch64
+          - runner: macos-15-intel
+            platform: macos-x86_64
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out papermario-dx at the given commit
         run: |
@@ -93,9 +101,9 @@ jobs:
           name: papermario-dx-aarch64-darwin
           authToken: "${{ secrets.PAPERMARIO_DX_AARCH64_DARWIN_CACHIX_AUTH_TOKEN }}"
 
-      - name: Build aarch64-darwin toolchain
+      - name: Build ${{ matrix.platform }} toolchain
         working-directory: papermario-dx
-        run: nix build .#unix-toolchain --out-link result-toolchain-aarch64-darwin
+        run: nix build .#unix-toolchain --out-link result-toolchain
 
       - name: Publish to S3
         working-directory: papermario-dx
@@ -105,9 +113,9 @@ jobs:
         run: |
           set -euo pipefail
           bucket="s3://starhaven/papermario-dx"
-          file=$(echo result-toolchain-aarch64-darwin/papermario-dx-*.zip)
+          file=$(echo result-toolchain/papermario-dx-*.zip)
           hash=$(sha256sum "$file" | cut -d' ' -f1)
           if ! aws s3api head-object --bucket starhaven --key "papermario-dx/toolchains/$hash.zip" --endpoint-url "$S3_ENDPOINT" >/dev/null 2>&1; then
             aws s3 cp "$file" "$bucket/toolchains/$hash.zip" --endpoint-url "$S3_ENDPOINT"
           fi
-          echo "$hash" | aws s3 cp - "$bucket/commits/$SHA/macos-aarch64" --endpoint-url "$S3_ENDPOINT"
+          echo "$hash" | aws s3 cp - "$bucket/commits/$SHA/${{ matrix.platform }}" --endpoint-url "$S3_ENDPOINT"
