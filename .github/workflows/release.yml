@@ -142,7 +142,7 @@ jobs:
           while read -r version; do
             echo "Pruning $version"
             aws s3 rm "s3://starhaven/diorama64/releases/" --endpoint-url "$endpoint" \
-              --recursive --exclude "*" --include "Diorama64-${version}-*"
+              --recursive --exclude "*" --include "Diorama64-${version}.*"
           done <<<"$stale"
 
   windows:
