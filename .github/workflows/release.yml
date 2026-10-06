@@ -96,10 +96,11 @@ jobs:
           if [ -z "$CSC_LINK" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
-          # A release's version is its tag's, such as 2026.10.0 for v2026.10.0.
-          # A build of a branch keeps package.json's 0.0.0.
+          # A release's version is its tag's, without the leading zeros semver
+          # rejects, such as 2026.10.7 for v2026.10.07. A build of a branch
+          # keeps package.json's 0.0.0.
           version=()
-          case "$TAG" in v*) version=(-c.extraMetadata.version="${TAG#v}") ;; esac
+          case "$TAG" in v*) version=(-c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')") ;; esac
           yarn --cwd app package:mac --publish "$publish" "${version[@]}"
 
       - name: Prune old releases
@@ -225,10 +226,11 @@ jobs:
         run: |
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
-          # A release's version is its tag's, such as 2026.10.0 for v2026.10.0.
-          # A build of a branch keeps package.json's 0.0.0.
+          # A release's version is its tag's, without the leading zeros semver
+          # rejects, such as 2026.10.7 for v2026.10.07. A build of a branch
+          # keeps package.json's 0.0.0.
           version=()
-          case "$TAG" in v*) version=(-c.extraMetadata.version="${TAG#v}") ;; esac
+          case "$TAG" in v*) version=(-c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')") ;; esac
           yarn --cwd app package:win --publish "$publish" "${version[@]}"
 
       # A dry run uploads nothing, so the installers are kept with the run.
