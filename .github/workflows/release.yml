@@ -97,11 +97,15 @@ jobs:
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
           # A release's version is its tag's, without the leading zeros semver
-          # rejects, such as 2026.10.7 for v2026.10.07. A build of a branch
-          # keeps package.json's 0.0.0.
-          version=()
-          case "$TAG" in v*) version=(-c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')") ;; esac
-          yarn --cwd app package:mac --publish "$publish" "${version[@]}"
+          # rejects, such as 2026.10.7 for v2026.10.07, and its files are named
+          # for the tag as written, such as Diorama64-2026.10.07.dmg. A build of a
+          # branch keeps package.json's 0.0.0, and electron-builder.yml's names.
+          release=()
+          case "$TAG" in v*) release=(
+            -c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')"
+            -c.mac.artifactName="Diorama64-${TAG#v}.\${ext}"
+          ) ;; esac
+          yarn --cwd app package:mac --publish "$publish" "${release[@]}"
 
       - name: Prune old releases
         if: env.DRY_RUN != 'true'
@@ -227,18 +231,23 @@ jobs:
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
           # A release's version is its tag's, without the leading zeros semver
-          # rejects, such as 2026.10.7 for v2026.10.07. A build of a branch
-          # keeps package.json's 0.0.0.
-          version=()
-          case "$TAG" in v*) version=(-c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')") ;; esac
-          yarn --cwd app package:win --publish "$publish" "${version[@]}"
+          # rejects, such as 2026.10.7 for v2026.10.07, and its files are named
+          # for the tag as written, such as Diorama64-2026.10.07-x64.exe. A
+          # build of a branch keeps package.json's 0.0.0, and
+          # electron-builder.yml's names.
+          release=()
+          case "$TAG" in v*) release=(
+            -c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')"
+            -c.nsis.artifactName="Diorama64-${TAG#v}-\${arch}.\${ext}"
+          ) ;; esac
+          yarn --cwd app package:win --publish "$publish" "${release[@]}"
 
       # A dry run uploads nothing, so the installers are kept with the run.
       - name: Keep the installers
         uses: actions/upload-artifact@v4
         with:
           name: windows-installers
-          path: diorama64/app/dist/*-Setup.exe
+          path: diorama64/app/dist/Diorama64-*.exe
 
       - name: Prune old releases
         if: env.DRY_RUN != 'true'
@@ -250,7 +259,7 @@ jobs:
           set -euo pipefail
 
           # Each version produces 2 files (x64 + arm64), both named
-          # Diorama64-<version>-<arch>-Setup.exe. Keep the newest 3
+          # Diorama64-<version>-<arch>.exe. Keep the newest 3
           # versions, delete every file belonging to any older one.
           keep=3
           endpoint="https://fsn1.your-objectstorage.com"
@@ -262,8 +271,8 @@ jobs:
             --query 'Contents[].Key' \
             --output text \
             | tr '\t' '\n' \
-            | grep -E '\-Setup\.exe$' \
-            | sed -E 's#.*Diorama64-(.+)-(x64|arm64)-Setup\.exe$#\1#' \
+            | grep -E '\.exe$' \
+            | sed -E 's#.*Diorama64-(.+)-(x64|arm64)\.exe$#\1#' \
             | sort -uV)
 
           stale=$(echo "$versions" | head -n "-$keep" || true)
