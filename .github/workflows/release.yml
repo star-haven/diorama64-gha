@@ -231,6 +231,13 @@ jobs:
           case "$TAG" in v*) version=(-c.extraMetadata.version="${TAG#v}") ;; esac
           yarn --cwd app package:win --publish "$publish" "${version[@]}"
 
+      # A dry run uploads nothing, so the installers are kept with the run.
+      - name: Keep the installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: diorama64/app/dist/*-Setup.exe
+
       - name: Prune old releases
         if: env.DRY_RUN != 'true'
         env:
