@@ -96,7 +96,11 @@ jobs:
           if [ -z "$CSC_LINK" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
-          yarn --cwd app package:mac --publish "$publish"
+          # A release's version is its tag's, such as 2026.10.0 for v2026.10.0.
+          # A build of a branch keeps package.json's 0.0.0.
+          version=()
+          case "$TAG" in v*) version=(-c.extraMetadata.version="${TAG#v}") ;; esac
+          yarn --cwd app package:mac --publish "$publish" "${version[@]}"
 
       - name: Prune old releases
         if: env.DRY_RUN != 'true'
@@ -221,7 +225,11 @@ jobs:
         run: |
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
-          yarn --cwd app package:win --publish "$publish"
+          # A release's version is its tag's, such as 2026.10.0 for v2026.10.0.
+          # A build of a branch keeps package.json's 0.0.0.
+          version=()
+          case "$TAG" in v*) version=(-c.extraMetadata.version="${TAG#v}") ;; esac
+          yarn --cwd app package:win --publish "$publish" "${version[@]}"
 
       - name: Prune old releases
         if: env.DRY_RUN != 'true'
