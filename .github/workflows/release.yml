@@ -96,13 +96,14 @@ jobs:
           if [ -z "$CSC_LINK" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
-          # A release's version is its tag's, without the leading zeros semver
-          # rejects, such as 2026.10.7 for v2026.10.07, and its files are named
-          # for the tag as written, such as Diorama64-2026.10.07.dmg. A build of a
-          # branch keeps package.json's 0.0.0, and electron-builder.yml's names.
+          # A release's version is its tag's date with dots, and without the
+          # leading zeros semver rejects, such as 2026.10.7 for v2026-10-07, and
+          # its files are named for the tag as written, such as
+          # Diorama64-2026-10-07.dmg. A build of a branch keeps package.json's
+          # 0.0.0, and electron-builder.yml's names.
           release=()
           case "$TAG" in v*) release=(
-            -c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')"
+            -c.extraMetadata.version="$(echo "${TAG#v}" | tr - . | sed -E 's/(^|\.)0+([0-9])/\1\2/g')"
             -c.mac.artifactName="Diorama64-${TAG#v}.\${ext}"
           ) ;; esac
           yarn --cwd app package:mac --publish "$publish" "${release[@]}"
@@ -142,7 +143,7 @@ jobs:
           while read -r version; do
             echo "Pruning $version"
             aws s3 rm "s3://starhaven/diorama64/releases/" --endpoint-url "$endpoint" \
-              --recursive --exclude "*" --include "Diorama64-${version}.*"
+              --recursive --exclude "*" --include "Diorama64-${version}.dmg*" --include "Diorama64-${version}.zip*"
           done <<<"$stale"
 
   windows:
@@ -230,15 +231,16 @@ jobs:
         run: |
           publish=always
           if [ "$DRY_RUN" = "true" ]; then publish=never; fi
-          # A release's version is its tag's, without the leading zeros semver
-          # rejects, such as 2026.10.7 for v2026.10.07, and its files are named
-          # for the tag as written, such as Diorama64-2026.10.07-x64.exe. A
+          # A release's version is its tag's date with dots, and without the
+          # leading zeros semver rejects, such as 2026.10.7 for v2026-10-07, and
+          # its files are named for the tag as written, such as
+          # Diorama64-2026-10-07.exe, one installer for both architectures. A
           # build of a branch keeps package.json's 0.0.0, and
           # electron-builder.yml's names.
           release=()
           case "$TAG" in v*) release=(
-            -c.extraMetadata.version="$(echo "${TAG#v}" | sed -E 's/(^|\.)0+([0-9])/\1\2/g')"
-            -c.nsis.artifactName="Diorama64-${TAG#v}-\${arch}.\${ext}"
+            -c.extraMetadata.version="$(echo "${TAG#v}" | tr - . | sed -E 's/(^|\.)0+([0-9])/\1\2/g')"
+            -c.nsis.artifactName="Diorama64-${TAG#v}.\${ext}"
           ) ;; esac
           yarn --cwd app package:win --publish "$publish" "${release[@]}"
 
@@ -258,9 +260,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Each version produces 2 files (x64 + arm64), both named
-          # Diorama64-<version>-<arch>.exe. Keep the newest 3
-          # versions, delete every file belonging to any older one.
+          # Each version produces 1 installer, named Diorama64-<version>.exe,
+          # for both architectures. Keep the newest 3 versions, delete every
+          # file belonging to any older one.
           keep=3
           endpoint="https://fsn1.your-objectstorage.com"
 
@@ -272,7 +274,7 @@ jobs:
             --output text \
             | tr '\t' '\n' \
             | grep -E '\.exe$' \
-            | sed -E 's#.*Diorama64-(.+)-(x64|arm64)\.exe$#\1#' \
+            | sed -E 's#.*Diorama64-(.+)\.exe$#\1#' \
             | sort -uV)
 
           stale=$(echo "$versions" | head -n "-$keep" || true)
@@ -285,5 +287,5 @@ jobs:
           while read -r version; do
             echo "Pruning $version"
             aws s3 rm "s3://starhaven/diorama64/releases/" --endpoint-url "$endpoint" \
-              --recursive --exclude "*" --include "Diorama64-${version}-*"
+              --recursive --exclude "*" --include "Diorama64-${version}.exe*"
           done <<<"$stale"
